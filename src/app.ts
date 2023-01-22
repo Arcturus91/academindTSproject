@@ -1,8 +1,41 @@
 //Project State Management
 
-class projectState {
+class ProjectState {
+  private listeners: any[] = []; //array of function references
   private projects: any[] = [];
+  private static instance: ProjectState; //static means the property / method belongs to the class itself rather than to instances of the class.
+
+  private constructor() {}
+
+  /* A private constructor in TypeScript can be used to prevent the instantiation of a class from outside of itself. This can be useful in situations where you only want certain parts of your code to have access to the class, or where you want to ensure that a class can only be instantiated a certain way. */
+
+  static getInstance() {
+    if (this.instance) {
+      return this.instance;
+    }
+    this.instance = new ProjectState();
+    return this.instance;
+  }
+
+  addListener(listenerFn: Function) {
+    this.listeners.push(listenerFn);
+  }
+  addProject(title: string, description: string, numOfPeople: number) {
+    const newProject = {
+      id: Math.random().toString(),
+      title: title,
+      description: description,
+      prople: numOfPeople,
+    };
+    this.projects.push(newProject);
+
+    for (const listenerFn of this.listeners) {
+      listenerFn(this.projects.slice());
+    }
+  }
 }
+
+const projectState = ProjectState.getInstance();
 
 //validation
 interface Validatable {
@@ -70,20 +103,40 @@ class ProjectList {
   element: HTMLElement;
   templateElement: HTMLTemplateElement;
   hostElement: HTMLDivElement;
+  assignedProjects: any[];
+
   constructor(private type: "active" | "finished") {
     this.templateElement = document.getElementById(
       "project-list"
     )! as HTMLTemplateElement;
     this.hostElement = document.getElementById("app")! as HTMLDivElement;
-
+    this.assignedProjects = [];
     const importedNode = document.importNode(
       this.templateElement.content,
       true
     ); //document fragment which its only children is the enclosing node that is inside of a template element.
     this.element = importedNode.firstElementChild as HTMLElement;
     this.element.id = `${this.type}-projects`;
+
+    projectState.addListener((projects: any[]) => {
+      this.assignedProjects = projects;
+      this.renderProjects();
+    });
+
     this.attach();
     this.renderContent();
+  }
+
+  private renderProjects() {
+    const listEl = document.getElementById(
+      `${this.type}-projects-list`
+    )! as HTMLUListElement;
+
+    for (const prjItem of this.assignedProjects) {
+      const listItem = document.createElement("li");
+      listItem.textContent = prjItem.title;
+      listEl.appendChild(listItem);
+    }
   }
 
   private renderContent() {
@@ -189,7 +242,8 @@ class ProjectInput {
     const userInput = this.gatherUserInput();
     if (Array.isArray(userInput)) {
       const [title, desc, people] = userInput;
-      console.log(title, desc, people);
+
+      projectState.addProject(title, desc, people);
       this.clearInput();
     }
   }
