@@ -126,8 +126,8 @@ function autobind(_: any, _2: string, descriptor: PropertyDescriptor) {
 
 abstract class Component<T extends HTMLElement, U extends HTMLElement> {
   templateElement: HTMLTemplateElement;
-  hostElement: T;
-  element: U;
+  hostElement: T; //el host element
+  element: U; // el elemento que vamos a meter al host
 
   constructor(
     templateId: string,
@@ -140,12 +140,16 @@ abstract class Component<T extends HTMLElement, U extends HTMLElement> {
       templateId
     )! as HTMLTemplateElement; //esto es typecasting
     this.hostElement = document.getElementById(hostElementId)! as T;
-
+    //aqui lo qe yo estoy haciendo es agarra el elemento que le pasan a la clase componente
+    // y asignalo como host element. nada más. Esto se hace desde las clases que lo extienden y le pasanel hostelementid como segundo parámetro.
+    //más abajo, en this.attach lo que hago es meter "this.element" al host element. Mira como le haces un insertAdjacentElement.
+    console.log("i am host element", this.hostElement);
     const importedNode = document.importNode(
       this.templateElement.content,
       true
     ); //document fragment which its only children is the enclosing node that is inside of a template element.
     this.element = importedNode.firstElementChild as U;
+    console.log("i am this elemenbt", this.element); // se refiere al elemento form, section active, section finished. Cada uno de estos es un elemento.
     if (newElementId) {
       this.element.id = newElementId;
     }
@@ -160,6 +164,37 @@ abstract class Component<T extends HTMLElement, U extends HTMLElement> {
   abstract configure(): void;
   abstract renderContent(): void; //el ser abstract method te obliga a que lo implementes en las clases que extienden la clase padre.
 }
+
+//ProjectItem class
+class ProjectItem extends Component<HTMLUListElement, HTMLLIElement> {
+  private project: Project; //private properties are normally defined with a _ underscore before the name. The underscore is used to indicate the property / method is private and not intented to be shared outside the class.
+
+  get persons() {
+    //a getter is like a function for getting certain values from inside the class. it can even be used for getting values from a private property without exposing the class design. This is called "encapsulation"
+    if (this.project.people === 1) {
+      return "1 person";
+    } else {
+      return `${this.project.people} persons`; //template literal
+    }
+  }
+
+  constructor(hostId: string, project: Project) {
+    super("single-project", hostId, false, project.id);
+    this.project = project;
+    this.configure();
+    this.renderContent();
+  }
+
+  configure(): void {}
+
+  renderContent(): void {
+    this.element.querySelector("h2")!.textContent = this.project.title;
+    this.element.querySelector("h3")!.textContent = this.persons + " assigned."; //nota como accedo al getter como si fuera una propiedad.
+    this.element.querySelector("p")!.textContent = this.project.description;
+  }
+}
+
+//ProjectList class
 
 class ProjectList extends Component<HTMLDivElement, HTMLElement> {
   assignedProjects: Project[];
@@ -180,9 +215,8 @@ class ProjectList extends Component<HTMLDivElement, HTMLElement> {
     listEl.innerHTML = "";
 
     for (const prjItem of this.assignedProjects) {
-      const listItem = document.createElement("li");
-      listItem.textContent = prjItem.title;
-      listEl.appendChild(listItem);
+      console.log(this.element, "from the for loop");
+      new ProjectItem(this.element.querySelector("ul")!.id, prjItem);
     }
   }
 
