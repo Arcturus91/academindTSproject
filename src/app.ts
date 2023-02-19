@@ -16,13 +16,22 @@ class Project {
 }
 
 //Project State Management
-type Listener = (items: Project[]) => void; //in listeners we dont need a return.
-class ProjectState {
-  private listeners: Listener[] = []; //array of function references
+type Listener<T> = (items: T[]) => void; //in listeners we dont need a return.
+
+class State<T> {
+  protected listeners: Listener<T>[] = []; //array of function references //protected means it is still not accessible from anywhere but from inside the calss and the classes that inherits.
+  addListener(listenerFn: Listener<T>) {
+    this.listeners.push(listenerFn);
+  }
+}
+
+class ProjectState extends State<Project> {
   private projects: Project[] = [];
   private static instance: ProjectState; //static means the property / method belongs to the class itself rather than to instances of the class.
 
-  private constructor() {}
+  private constructor() {
+    super();
+  }
 
   /* A private constructor in TypeScript can be used to prevent the instantiation of a class from outside of itself. This can be useful in situations where you only want certain parts of your code to have access to the class, or where you want to ensure that a class can only be instantiated a certain way. */
 
@@ -34,9 +43,6 @@ class ProjectState {
     return this.instance;
   }
 
-  addListener(listenerFn: Listener) {
-    this.listeners.push(listenerFn);
-  }
   addProject(title: string, description: string, numOfPeople: number) {
     const newProject = new Project(
       Math.random().toString(),
@@ -116,7 +122,7 @@ function autobind(_: any, _2: string, descriptor: PropertyDescriptor) {
   return adjDescriptor;
 }
 //JS parses all the typescript before starting the DOM so it will be aware of all the classes, no mather its location
-//abstract so nobody can instantiate the class.
+//TODO: abstract so nobody can instantiate the class.
 
 abstract class Component<T extends HTMLElement, U extends HTMLElement> {
   templateElement: HTMLTemplateElement;
@@ -130,10 +136,9 @@ abstract class Component<T extends HTMLElement, U extends HTMLElement> {
     newElementId?: string
   ) {
     //el simbolo de pregunta hace referencia a que el valor puede ser undefined.
-
     this.templateElement = document.getElementById(
       templateId
-    )! as HTMLTemplateElement;
+    )! as HTMLTemplateElement; //esto es typecasting
     this.hostElement = document.getElementById(hostElementId)! as T;
 
     const importedNode = document.importNode(
@@ -144,40 +149,26 @@ abstract class Component<T extends HTMLElement, U extends HTMLElement> {
     if (newElementId) {
       this.element.id = newElementId;
     }
-
     this.attach(insertAtStart);
   }
-
   private attach(insertAtBeginning: boolean) {
     this.hostElement.insertAdjacentElement(
       insertAtBeginning ? "afterbegin" : "beforeend",
       this.element
     );
   }
-
-  abstract configure() : void
-  abstract renderContent():void
-
+  abstract configure(): void;
+  abstract renderContent(): void; //el ser abstract method te obliga a que lo implementes en las clases que extienden la clase padre.
 }
 
-class ProjectList extends Component{
-
+class ProjectList extends Component<HTMLDivElement, HTMLElement> {
   assignedProjects: Project[];
 
   constructor(private type: "active" | "finished") {
+    super("project-list", "app", false, `${type}-projects`);
+
     this.assignedProjects = [];
-
-    projectState.addListener((projects: Project[]) => {
-      const relevantProjects = projects.filter((prj) => {
-        if (this.type === "active") {
-          return prj.status === ProjectStatus.Active;
-        }
-        return prj.status === ProjectStatus.Finished;
-      });
-      this.assignedProjects = relevantProjects;
-      this.renderProjects();
-    });
-
+    this.configure();
     this.renderContent();
   }
 
@@ -195,7 +186,20 @@ class ProjectList extends Component{
     }
   }
 
-  private renderContent() {
+  configure(): void {
+    projectState.addListener((projects: Project[]) => {
+      const relevantProjects = projects.filter((prj) => {
+        if (this.type === "active") {
+          return prj.status === ProjectStatus.Active;
+        }
+        return prj.status === ProjectStatus.Finished;
+      });
+      this.assignedProjects = relevantProjects;
+      this.renderProjects();
+    });
+  }
+
+  renderContent() {
     const listId = `${this.type}-projects-list`;
     this.element.querySelector("ul")!.id = listId;
     this.element.querySelector("h2")!.textContent =
@@ -204,28 +208,12 @@ class ProjectList extends Component{
 }
 
 //ProjectInput Class
-class ProjectInput {
-  element: HTMLFormElement;
-  templateElement: HTMLTemplateElement;
-  hostElement: HTMLDivElement;
+class ProjectInput extends Component<HTMLDivElement, HTMLFormElement> {
   titleInputElement: HTMLInputElement;
   descriptionInputElement: HTMLInputElement;
   peopleInputElement: HTMLInputElement;
-
   constructor() {
-    this.templateElement = document.getElementById(
-      "project-input"
-    )! as HTMLTemplateElement; //type casting
-    this.hostElement = document.getElementById("app")! as HTMLDivElement;
-    //this.templateElement.content refers to a document fragment that includes what is inside the template.
-    const importedNode = document.importNode(
-      this.templateElement.content,
-      true //we add true here to indicate we want to copy even the dependants.
-    ); //importedNode is a document fragment.
-
-    this.element = importedNode.firstElementChild as HTMLFormElement; //we are getting the form element here
-    //this is the form element
-    this.element.id = "user-input"; //we asociate the form element to an id so we can pass it properties from app.css
+    super("project-input", "app", true, "user-input");
 
     this.titleInputElement = this.element.querySelector(
       "#title"
@@ -238,8 +226,20 @@ class ProjectInput {
     )! as HTMLInputElement;
 
     this.configure();
-    this.attach(); //remember all constructor function gets executed when class is instantiated.
   }
+
+  configure() {
+    this.element.addEventListener(
+      "submit",
+      this.submitHandler /* .bind(this) */
+    );
+    //the this here refers to the class // so we are binging the this = class to the sumbithandler
+    //in an event listener, the second argument is the function we want to call when the event occurs
+    //
+  }
+
+  renderContent(): void {}
+
   //event object is provided by DOM
   //first type is a tuple and second type is void. This means method can either return a tuple or void.
   //notice the union type.
@@ -298,21 +298,6 @@ class ProjectInput {
       projectState.addProject(title, desc, people);
       this.clearInput();
     }
-  }
-
-  private configure() {
-    this.element.addEventListener(
-      "submit",
-      this.submitHandler /* .bind(this) */
-    );
-    //the this here refers to the class // so we are binging the this = class to the sumbithandler
-    //in an event listener, the second argument is the function we want to call when the event occurs
-    //
-  }
-
-  private attach() {
-    this.hostElement.insertAdjacentElement("afterbegin", this.element);
-    //afterbegin: Inserts the element as the first child of the current element.
   }
 }
 
