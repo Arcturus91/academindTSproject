@@ -1,5 +1,18 @@
-//Project type
+//Drag and drop interfaces
+interface Draggable {
+  dragStartHandler(event: DragEvent): void;
+  dragEndHandler(event: DragEvent): void;
+}
 
+//recuerda que al usar interfaces, obligas a la clase a tener dichas propiedades o métodos.
+
+interface DragTarget {
+  dragOverHandler(event: DragEvent): void;
+  dropHandler(event: DragEvent): void;
+  dragLeaveHandler(event: DragEvent): void;
+}
+
+//Project type
 enum ProjectStatus {
   Active,
   Finished,
@@ -53,8 +66,20 @@ class ProjectState extends State<Project> {
     );
     this.projects.push(newProject);
 
+    this._updateListeners();
+  }
+
+  moveProject(projectId: string, newStatus: ProjectStatus) {
+    const project = this.projects.find((prj) => prj.id === projectId);
+    if (project && project.status !== newStatus) {
+      project.status = newStatus;
+      this._updateListeners();
+    }
+  }
+
+  private _updateListeners() {
     for (const listenerFn of this.listeners) {
-      listenerFn(this.projects.slice());
+      listenerFn(this.projects.slice()); //.slice() returns a copy of the original array, in this case, this.projects
     }
   }
 }
@@ -143,13 +168,13 @@ abstract class Component<T extends HTMLElement, U extends HTMLElement> {
     //aqui lo qe yo estoy haciendo es agarra el elemento que le pasan a la clase componente
     // y asignalo como host element. nada más. Esto se hace desde las clases que lo extienden y le pasanel hostelementid como segundo parámetro.
     //más abajo, en this.attach lo que hago es meter "this.element" al host element. Mira como le haces un insertAdjacentElement.
-    console.log("i am host element", this.hostElement);
+
     const importedNode = document.importNode(
       this.templateElement.content,
       true
     ); //document fragment which its only children is the enclosing node that is inside of a template element.
     this.element = importedNode.firstElementChild as U;
-    console.log("i am this elemenbt", this.element); // se refiere al elemento form, section active, section finished. Cada uno de estos es un elemento.
+    // se refiere al elemento form, section active, section finished. Cada uno de estos es un elemento.
     if (newElementId) {
       this.element.id = newElementId;
     }
@@ -165,8 +190,11 @@ abstract class Component<T extends HTMLElement, U extends HTMLElement> {
   abstract renderContent(): void; //el ser abstract method te obliga a que lo implementes en las clases que extienden la clase padre.
 }
 
-//ProjectItem class
-class ProjectItem extends Component<HTMLUListElement, HTMLLIElement> {
+//ProjectItem class :nota como podemos extender la clase desde un padre y podemos implementar una interfaz; es decir, indicar que seguiremos un contrato.
+class ProjectItem
+  extends Component<HTMLUListElement, HTMLLIElement>
+  implements Draggable
+{
   private project: Project; //private properties are normally defined with a _ underscore before the name. The underscore is used to indicate the property / method is private and not intented to be shared outside the class.
 
   get persons() {
@@ -185,7 +213,23 @@ class ProjectItem extends Component<HTMLUListElement, HTMLLIElement> {
     this.renderContent();
   }
 
-  configure(): void {}
+  @autobind
+  dragStartHandler(event: DragEvent): void {
+    console.log("drag start", event);
+    event.dataTransfer!.setData("text/plain", this.project.id);
+    event.dataTransfer!.effectAllowed = "move";
+  }
+
+  dragEndHandler(event: DragEvent): void {
+    console.log("drag end", event);
+  }
+
+  configure(): void {
+    this.element.addEventListener("dragstart", this.dragStartHandler);
+    this.element.addEventListener("dragend", this.dragEndHandler);
+  }
+
+  //The this keyword inside an event listener refers to the element that the event listener is attached to. Always remember
 
   renderContent(): void {
     this.element.querySelector("h2")!.textContent = this.project.title;
@@ -196,7 +240,10 @@ class ProjectItem extends Component<HTMLUListElement, HTMLLIElement> {
 
 //ProjectList class
 
-class ProjectList extends Component<HTMLDivElement, HTMLElement> {
+class ProjectList
+  extends Component<HTMLDivElement, HTMLElement>
+  implements DragTarget
+{
   assignedProjects: Project[];
 
   constructor(private type: "active" | "finished") {
@@ -215,12 +262,38 @@ class ProjectList extends Component<HTMLDivElement, HTMLElement> {
     listEl.innerHTML = "";
 
     for (const prjItem of this.assignedProjects) {
-      console.log(this.element, "from the for loop");
       new ProjectItem(this.element.querySelector("ul")!.id, prjItem);
     }
   }
 
+  @autobind
+  dragOverHandler(event: DragEvent): void {
+    if (event.dataTransfer && event.dataTransfer.types[0] === "text/plain") {
+      event.preventDefault();
+      const listEl = this.element.querySelector("ul")!;
+      listEl.classList.add("droppable");
+    }
+  }
+  @autobind
+  dropHandler(event: DragEvent): void {
+    const prjId = event.dataTransfer!.getData("text/plain");
+    projectState.moveProject(
+      prjId,
+      this.type === "active" ? ProjectStatus.Active : ProjectStatus.Finished
+    );
+  }
+
+  @autobind
+  dragLeaveHandler(_: DragEvent): void {
+    const listEl = this.element.querySelector("ul")!;
+    listEl.classList.remove("droppable");
+  }
+
   configure(): void {
+    this.element.addEventListener("dragover", this.dragOverHandler);
+    this.element.addEventListener("drop", this.dropHandler);
+    this.element.addEventListener("dragleave", this.dragLeaveHandler);
+
     projectState.addListener((projects: Project[]) => {
       const relevantProjects = projects.filter((prj) => {
         if (this.type === "active") {
